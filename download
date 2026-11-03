@@ -1,0 +1,16 @@
+# Environments and caches
+.venv/
+venv/
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+# Raw data (review dataset license before committing)
+data/*.csv
+
+# Fitted model binaries
+models/*.joblib
+models/*.pkl
+
+# Generated plots (keep metric CSVs if useful)
+reports/*.png

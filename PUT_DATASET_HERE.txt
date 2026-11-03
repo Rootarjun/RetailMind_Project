@@ -1,0 +1,1 @@
+Place the bank customer churn CSV here. It must contain the target column 'Exited'.
