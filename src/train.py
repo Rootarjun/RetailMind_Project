@@ -4,14 +4,14 @@ import joblib
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
-from .data_preprocessing import (
+from data_preprocessing import (
     MODEL_DIR,
     RANDOM_STATE,
     REPORT_DIR,
     get_train_test_data,
     make_model_pipeline,
 )
-from .evaluate import evaluate_classifier
+from evaluate import evaluate_classifier
 
 
 def train_baseline(
@@ -38,7 +38,7 @@ def train_baseline(
     joblib.dump(model, model_dir / "churn_day1_baseline.joblib")
 
     metrics = evaluate_classifier(
-        "Day 1 — Logistic Regression baseline", model, X_test, y_test
+        "Day 1 - Logistic Regression baseline", model, X_test, y_test
     )
     pd.DataFrame([metrics]).to_csv(
         report_dir / "day1_baseline_metrics.csv", index=False

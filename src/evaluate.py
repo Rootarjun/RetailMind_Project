@@ -14,7 +14,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from .data_preprocessing import MODEL_DIR, get_train_test_data
+from data_preprocessing import MODEL_DIR, get_train_test_data
 
 
 def evaluate_classifier(
@@ -41,11 +41,11 @@ def evaluate_classifier(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate the Day 3 churn model.")
+    parser = argparse.ArgumentParser(description="Evaluate the Day 4 churn model.")
     parser.add_argument(
         "--model",
         type=Path,
-        default=MODEL_DIR / "churn_day3_tuned.joblib",
+        default=MODEL_DIR / "churn_day4_champion.joblib",
         help="Path to a saved model pipeline.",
     )
     args = parser.parse_args()
