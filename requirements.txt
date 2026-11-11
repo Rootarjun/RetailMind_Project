@@ -1,7 +1,263 @@
-pandas
-numpy
-scikit-learn==1.6.1
-joblib
-matplotlib
-ipykernel
-tensorflow==2.18.0
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "title",
+   "metadata": {},
+   "source": [
+    "# RetailMind AI ? Customer Churn\n",
+    "## Days 1?4\n",
+    "\n",
+    "This notebook contains the code to prepare data, train models, and save results. Run cells from top to bottom. Each day uses the same held-out test customers."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "data-note",
+   "metadata": {},
+   "source": [
+    "## Before starting\n",
+    "\n",
+    "Put the Telco Customer Churn CSV in `data/`. The next cell loads it and creates a training group and a test group."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "setup",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from pathlib import Path\n",
+    "import joblib\n",
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "from sklearn.compose import ColumnTransformer\n",
+    "from sklearn.impute import SimpleImputer\n",
+    "from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix\n",
+    "from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score, GridSearchCV\n",
+    "from sklearn.pipeline import Pipeline\n",
+    "from sklearn.preprocessing import OneHotEncoder, StandardScaler, FunctionTransformer\n",
+    "from sklearn.linear_model import LogisticRegression\n",
+    "from sklearn.tree import DecisionTreeClassifier\n",
+    "from sklearn.ensemble import RandomForestClassifier\n",
+    "from sklearn.svm import SVC\n",
+    "from sklearn.feature_selection import SelectKBest, f_classif\n",
+    "\n",
+    "# Find the project folder from either the root or notebooks/.\n",
+    "PROJECT_ROOT = Path.cwd()\n",
+    "if PROJECT_ROOT.name == \"notebooks\": PROJECT_ROOT = PROJECT_ROOT.parent\n",
+    "DATA_DIR = PROJECT_ROOT / \"data\"\n",
+    "MODEL_DIR = PROJECT_ROOT / \"models\"\n",
+    "REPORT_DIR = PROJECT_ROOT / \"reports\"\n",
+    "MODEL_DIR.mkdir(exist_ok=True)\n",
+    "REPORT_DIR.mkdir(exist_ok=True)\n",
+    "\n",
+    "# Read and prepare the Telco customer CSV.\n",
+    "file_names = [\"Telco-Customer-Churn.csv\", \"WA_Fn-UseC_-Telco-Customer-Churn.csv\", \"telco_customer_churn.csv\"]\n",
+    "csv_path = next((DATA_DIR / name for name in file_names if (DATA_DIR / name).is_file()), None)\n",
+    "if csv_path is None: raise FileNotFoundError(\"Put the Telco churn CSV in the data folder.\")\n",
+    "data = pd.read_csv(csv_path)\n",
+    "data[\"TotalCharges\"] = pd.to_numeric(data[\"TotalCharges\"], errors=\"coerce\")\n",
+    "y = data.pop(\"Churn\").map({\"No\": 0, \"Yes\": 1})\n",
+    "if y.isna().any(): raise ValueError(\"Churn should contain only Yes and No.\")\n",
+    "X = data.drop(columns=[\"customerID\"], errors=\"ignore\")\n",
+    "X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)\n",
+    "\n",
+    "# Prepare numbers and text inside each model pipeline.\n",
+    "def make_preprocessor(frame):\n",
+    "    number_columns = frame.select_dtypes(include=\"number\").columns.tolist()\n",
+    "    text_columns = frame.select_dtypes(exclude=\"number\").columns.tolist()\n",
+    "    return ColumnTransformer([\n",
+    "        (\"numbers\", Pipeline([(\"fill\", SimpleImputer(strategy=\"median\")), (\"scale\", StandardScaler())]), number_columns),\n",
+    "        (\"text\", Pipeline([(\"fill\", SimpleImputer(strategy=\"most_frequent\")), (\"encode\", OneHotEncoder(handle_unknown=\"ignore\"))]), text_columns),\n",
+    "    ])\n",
+    "def make_model(estimator):\n",
+    "    return Pipeline([(\"prepare\", make_preprocessor(X_train)), (\"model\", estimator)])\n",
+    "def score_model(name, model):\n",
+    "    guess = model.predict(X_test)\n",
+    "    probability = model.predict_proba(X_test)[:, 1]\n",
+    "    result = {\"Model\": name, \"Accuracy\": accuracy_score(y_test, guess), \"Precision\": precision_score(y_test, guess, zero_division=0), \"Recall\": recall_score(y_test, guess, zero_division=0), \"F1\": f1_score(y_test, guess, zero_division=0), \"ROC_AUC\": roc_auc_score(y_test, probability)}\n",
+    "    print(pd.Series(result).to_string())\n",
+    "    print(\"Confusion matrix [correct no, false alarm; missed churn, found churn]:\")\n",
+    "    print(confusion_matrix(y_test, guess))\n",
+    "    return result\n",
+    "print(\"Training rows:\", len(X_train), \" Test rows:\", len(X_test))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "day1-note",
+   "metadata": {},
+   "source": [
+    "## Day 1 ? A simple first model\n",
+    "\n",
+    "Logistic Regression is the baseline. The pipeline fills missing values, scales numbers, and converts text answers into numbers."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "day1-code",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "day1_model = make_model(LogisticRegression(max_iter=1500, class_weight=\"balanced\", random_state=42))\n",
+    "day1_model.fit(X_train, y_train)\n",
+    "day1_result = score_model(\"Day 1 Logistic Regression\", day1_model)\n",
+    "joblib.dump(day1_model, MODEL_DIR / \"churn_day1_notebook.joblib\")\n",
+    "pd.DataFrame([day1_result]).to_csv(REPORT_DIR / \"day1_notebook_metrics.csv\", index=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "day2-note",
+   "metadata": {},
+   "source": [
+    "## Day 2 ? Compare models\n",
+    "\n",
+    "Cross-validation tries each model on different parts of training data. We choose the model with the highest average recall for customers who leave."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "day2-code",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "candidates = {\n",
+    "    \"Decision Tree\": DecisionTreeClassifier(class_weight=\"balanced\", random_state=42),\n",
+    "    \"Random Forest\": RandomForestClassifier(n_estimators=250, class_weight=\"balanced\", random_state=42, n_jobs=-1),\n",
+    "    \"SVM\": SVC(kernel=\"rbf\", probability=True, class_weight=\"balanced\", random_state=42),\n",
+    "}\n",
+    "cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)\n",
+    "models = {}\n",
+    "rows = []\n",
+    "for name, estimator in candidates.items():\n",
+    "    model = make_model(estimator)\n",
+    "    model.fit(X_train, y_train)\n",
+    "    models[name] = model\n",
+    "    row = score_model(\"Day 2 \" + name, model)\n",
+    "    row[\"CV_Recall\"] = cross_val_score(make_model(estimator), X_train, y_train, scoring=\"recall\", cv=cv).mean()\n",
+    "    rows.append(row)\n",
+    "day2_results = pd.DataFrame(rows).sort_values(\"CV_Recall\", ascending=False)\n",
+    "day2_name = day2_results.iloc[0][\"Model\"].replace(\"Day 2 \", \"\")\n",
+    "day2_model = models[day2_name]\n",
+    "display(day2_results)\n",
+    "joblib.dump(day2_model, MODEL_DIR / \"churn_day2_notebook.joblib\")\n",
+    "day2_results.to_csv(REPORT_DIR / \"day2_notebook_comparison.csv\", index=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "day3-note",
+   "metadata": {},
+   "source": [
+    "## Day 3 ? Tune model settings\n",
+    "\n",
+    "Grid search tries a few settings using training data only. It picks the best average recall, then reports its result on the test customers."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "day3-code",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "searches = {\n",
+    "    \"Decision Tree\": (DecisionTreeClassifier(class_weight=\"balanced\", random_state=42), {\"model__max_depth\": [4, 8, None]}),\n",
+    "    \"Random Forest\": (RandomForestClassifier(class_weight=\"balanced\", random_state=42, n_jobs=-1), {\"model__n_estimators\": [150, 250], \"model__max_depth\": [None, 10]}),\n",
+    "    \"SVM\": (SVC(kernel=\"rbf\", probability=True, class_weight=\"balanced\"), {\"model__C\": [0.5, 1, 3]}),\n",
+    "}\n",
+    "search_results = []\n",
+    "best_models = {}\n",
+    "for name, (estimator, settings) in searches.items():\n",
+    "    search = GridSearchCV(make_model(estimator), settings, scoring=\"recall\", cv=cv, n_jobs=1)\n",
+    "    search.fit(X_train, y_train)\n",
+    "    best_models[name] = search.best_estimator_\n",
+    "    search_results.append({\"Model\": name, \"CV_Recall\": search.best_score_, \"Best_Settings\": search.best_params_})\n",
+    "day3_results = pd.DataFrame(search_results).sort_values(\"CV_Recall\", ascending=False)\n",
+    "day3_name = day3_results.iloc[0][\"Model\"]\n",
+    "day3_model = best_models[day3_name]\n",
+    "day3_score = score_model(\"Day 3 Tuned \" + day3_name, day3_model)\n",
+    "display(day3_results)\n",
+    "joblib.dump(day3_model, MODEL_DIR / \"churn_day3_notebook.joblib\")\n",
+    "day3_results.to_csv(REPORT_DIR / \"day3_notebook_tuning.csv\", index=False)\n",
+    "pd.DataFrame([day3_score]).to_csv(REPORT_DIR / \"day3_notebook_metrics.csv\", index=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "day4-note",
+   "metadata": {},
+   "source": [
+    "## Day 4 ? Add useful customer details\n",
+    "\n",
+    "Create a few understandable features, such as tenure group and average monthly charge. Then train a Random Forest with feature selection and compare it with Day 3."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "day4-code",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def add_customer_features(frame):\n",
+    "    frame = frame.copy()\n",
+    "    tenure = pd.to_numeric(frame[\"tenure\"], errors=\"coerce\")\n",
+    "    frame[\"tenure_group\"] = pd.cut(tenure, [-1, 12, 24, 48, 72], labels=[\"0-12\", \"13-24\", \"25-48\", \"49-72\"]).astype(\"object\")\n",
+    "    total = pd.to_numeric(frame[\"TotalCharges\"], errors=\"coerce\")\n",
+    "    frame[\"average_charge_per_month\"] = total / tenure.replace(0, np.nan)\n",
+    "    frame[\"is_month_to_month\"] = (frame[\"Contract\"] == \"Month-to-month\").astype(int)\n",
+    "    frame[\"uses_electronic_check\"] = (frame[\"PaymentMethod\"] == \"Electronic check\").astype(int)\n",
+    "    return frame\n",
+    "\n",
+    "# These features are simple row-by-row calculations, so they can be made before the pipeline.\n",
+    "X_train_day4 = add_customer_features(X_train)\n",
+    "X_test_day4 = add_customer_features(X_test)\n",
+    "day4_model = Pipeline([\n",
+    "    (\"prepare\", make_preprocessor(X_train_day4)),\n",
+    "    (\"select\", SelectKBest(f_classif, k=30)),\n",
+    "    (\"model\", RandomForestClassifier(n_estimators=300, min_samples_leaf=2, class_weight=\"balanced\", random_state=42, n_jobs=-1)),\n",
+    "])\n",
+    "day4_model.fit(X_train_day4, y_train)\n",
+    "day4_guess = day4_model.predict(X_test_day4)\n",
+    "day4_probability = day4_model.predict_proba(X_test_day4)[:, 1]\n",
+    "day4_result = {\"Model\": \"Day 4 Random Forest\", \"Accuracy\": accuracy_score(y_test, day4_guess), \"Precision\": precision_score(y_test, day4_guess, zero_division=0), \"Recall\": recall_score(y_test, day4_guess, zero_division=0), \"F1\": f1_score(y_test, day4_guess, zero_division=0), \"ROC_AUC\": roc_auc_score(y_test, day4_probability)}\n",
+    "print(pd.Series(day4_result).to_string())\n",
+    "print(\"Confusion matrix:\")\n",
+    "print(confusion_matrix(y_test, day4_guess))\n",
+    "day4_comparison = pd.DataFrame([score_model(\"Day 3 \" + day3_name, day3_model), day4_result])\n",
+    "display(day4_comparison)\n",
+    "joblib.dump(day4_model, MODEL_DIR / \"churn_day4_notebook.joblib\")\n",
+    "day4_comparison.to_csv(REPORT_DIR / \"day4_notebook_comparison.csv\", index=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "saved",
+   "metadata": {},
+   "source": [
+    "## Saved files\n",
+    "\n",
+    "This notebook saves its models and result tables with notebook-specific filenames in `models/` and `reports/`."
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "name": "python",
+   "version": "3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
